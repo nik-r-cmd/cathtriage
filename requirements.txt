@@ -1,0 +1,10 @@
+numpy
+pandas
+scikit-learn
+scipy
+openpyxl
+catboost
+shap
+pytest
+matplotlib
+tabpfn
