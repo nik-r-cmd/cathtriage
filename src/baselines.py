@@ -1,3 +1,4 @@
+
 """Full-feature benchmark: models x multi-label strategies, repeated stratified CV.
 
 Targets order in all prediction arrays: [LAD, LCX, RCA, CAD]   (CAD := any vessel >= 50%)
@@ -8,6 +9,7 @@ All preprocessing lives INSIDE the estimators, so it is refit per fold (no leaka
 """
 import numpy as np
 import pandas as pd
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression, LogisticRegressionCV
@@ -24,6 +26,9 @@ TARGETS = ["LAD", "LCX", "RCA", "CAD"]
 
 
 def make(model, n_classes, seed, device):
+    if model.endswith("_sig"):      # post-hoc Platt scaling (binary tasks only; joint8 stays uncalibrated)
+        base = make(model[:-4], n_classes, seed, device)
+        return CalibratedClassifierCV(base, method="sigmoid", cv=3) if n_classes == 2 else base
     if model == "lr":
         clf = (LogisticRegressionCV(Cs=8, cv=3, scoring="neg_log_loss", max_iter=5000)
                if n_classes == 2 else LogisticRegression(C=0.3, max_iter=5000))
