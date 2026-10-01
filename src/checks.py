@@ -1,3 +1,4 @@
+
 """Sanity checks that make results believable. Run these BEFORE trusting any number."""
 import numpy as np
 import pandas as pd
@@ -26,11 +27,11 @@ def permutation_check(X, y8, Yv, seed=0, combo=("lr", "indep")):
 
 
 def leakage_canary(X, y8, Yv, seed=0, combo=("lr", "indep")):
-    """Append a noisy copy of the target as a fake 'Cath' column. The harness MUST light up (AUC >> real)."""
+    """Append a noisy copy of CAD as a fake 'Cath' column. CAD AUC must jump to ~1.0 (vessel AUCs need not)."""
     rng = np.random.default_rng(seed)
     Xl = np.c_[X, Yv.max(1) + rng.normal(0, 0.1, len(X))]
     pr = benchmark(Xl, y8, Yv, [combo], n_repeats=1, seed=seed, device="cpu")
-    return _mean_auc(pr, Yv)
+    return binary_metrics(Yv.max(1), pr[combo][0, :, 3])["auc"]      # the fake Cath column only predicts CAD
 
 
 def subgroup_report(P, Yv, masks):
