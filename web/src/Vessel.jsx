@@ -13,7 +13,8 @@ function stenosedTube(curve, baseR, severity, center = 0.5, width = 0.12) {
   const pos = g.attributes.position, c = new THREE.Vector3(), v = new THREE.Vector3();
   for (let i = 0; i <= TS; i++) {
     curve.getPointAt(i / TS, c);
-    const f = 1 - severity * 0.8 * Math.exp(-(((i / TS) - center) / width) ** 2);
+    const z = ((i / TS) - center) / width;
+    const f = 1 - severity * 0.8 * Math.exp(-(z * z));
     for (let j = 0; j <= RS; j++) {
       const k = i * (RS + 1) + j;
       v.fromBufferAttribute(pos, k).sub(c).multiplyScalar(f).add(c);
