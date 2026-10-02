@@ -1,49 +1,47 @@
-// One coronary vessel: lumen narrows with P(stenosis), colour ramps green->red,
-// conformal-ambiguous vessels pulse. Schematic risk mapping, NOT patient anatomy.
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 
-const GREEN = new THREE.Color("#2ecc71"), YELLOW = new THREE.Color("#f1c40f"), RED = new THREE.Color("#e74c3c");
-const ramp = (p) => (p < 0.5 ? GREEN.clone().lerp(YELLOW, p / 0.5) : YELLOW.clone().lerp(RED, (p - 0.5) / 0.5));
-
-function stenosedTube(curve, baseR, severity, center = 0.5, width = 0.12) {
-  const TS = 64, RS = 12;
-  const g = new THREE.TubeGeometry(curve, TS, baseR, RS, false);
-  const pos = g.attributes.position, c = new THREE.Vector3(), v = new THREE.Vector3();
-  for (let i = 0; i <= TS; i++) {
-    curve.getPointAt(i / TS, c);
-    const z = ((i / TS) - center) / width;
-    const f = 1 - severity * 0.8 * Math.exp(-(z * z));
-    for (let j = 0; j <= RS; j++) {
-      const k = i * (RS + 1) + j;
-      v.fromBufferAttribute(pos, k).sub(c).multiplyScalar(f).add(c);
-      pos.setXYZ(k, v.x, v.y, v.z);
+function tubeGeo(curve, T = 72, R = 12) {
+  const fr = curve.computeFrenetFrames(T, false), pos = [], dir = [], tt = [], aa = [], idx = [];
+  for (let i = 0; i <= T; i++) {
+    const c = curve.getPoint(i / T);
+    for (let j = 0; j <= R; j++) {
+      const a = (j / R) * Math.PI * 2, d = fr.normals[i].clone().multiplyScalar(Math.cos(a)).addScaledVector(fr.binormals[i], Math.sin(a));
+      pos.push(c.x, c.y, c.z); dir.push(d.x, d.y, d.z); tt.push(i / T); aa.push(j / R);
+      if (i < T && j < R) { const q = i * (R + 1) + j; idx.push(q, q + R + 1, q + 1, q + 1, q + R + 1, q + R + 2); }
     }
   }
-  g.computeVertexNormals();
-  return g;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("aDir", new THREE.Float32BufferAttribute(dir, 3));
+  g.setAttribute("aT", new THREE.Float32BufferAttribute(tt, 1)); g.setAttribute("aA", new THREE.Float32BufferAttribute(aa, 1));
+  g.setIndex(idx); return g;
 }
+// Narrowing happens on the GPU (smooth tween). Its position along the vessel is NOT predicted (vessel-level labels only).
+const VERT = `uniform float uR,uSev; attribute vec3 aDir; attribute float aT,aA; varying float vT,vA; varying vec3 vN,vV;
+void main(){ float env=exp(-pow((aT-.45)/.28,2.)); float r=uR*mix(1.,.55,aT)*(1.-uSev*.78*env);
+ vec4 mv=modelViewMatrix*vec4(position+aDir*r,1.); vN=normalize(normalMatrix*aDir); vV=-mv.xyz; vT=aT; vA=aA; gl_Position=projectionMatrix*mv; }`;
+const FRAG = `uniform float uProb,uTime,uAmb,uSel,uDim; varying float vT,vA; varying vec3 vN,vV;
+vec3 ramp(float p){ vec3 g=vec3(.18,.8,.45),y=vec3(.95,.77,.2),r=vec3(.91,.3,.24); return p<.5?mix(g,y,p*2.):mix(y,r,(p-.5)*2.); }
+void main(){ vec3 n=normalize(vN),v=normalize(vV); float fr=pow(1.-max(dot(n,v),0.),2.5); vec3 b=ramp(uProb);
+ float flow=smoothstep(.55,1.,sin((vT*28.-uTime*(1.-.7*uProb)*3.)*3.14159));
+ float hatch=uAmb>.5?step(.5,fract(vT*60.+vA*2.))*(.5+.5*sin(uTime*4.)):0.;
+ vec3 col=b*(.35+.5*max(dot(n,normalize(vec3(.4,.7,.6))),0.))+b*flow*.5+fr*.35+hatch*.25+b*uSel*.5; gl_FragColor=vec4(col*mix(1.,.35,uDim),1.); }`;
 
-export default function Vessel({ name, points, prob, ambiguous, selected, onSelect, baseR = 0.035 }) {
-  const mat = useRef();
-  const curve = useMemo(() => new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p))), [points]);
-  const geo = useMemo(() => stenosedTube(curve, baseR, prob), [curve, baseR, prob]);
+export default function Vessel({ seg, prob, amb, selected, dim, onSelect, onHover }) {
+  const m = useRef(), cur = useRef(prob), geo = useMemo(() => tubeGeo(seg.curve), [seg]);
+  const uniforms = useMemo(() => ({ uR: { value: seg.r }, uSev: { value: 0 }, uProb: { value: prob }, uTime: { value: 0 },
+    uAmb: { value: 0 }, uSel: { value: 0 }, uDim: { value: 0 } }), [seg]);
   useFrame(({ clock }) => {
-    if (!mat.current) return;
-    mat.current.emissiveIntensity = ambiguous ? 0.35 + 0.35 * Math.sin(clock.elapsedTime * 4) : selected ? 0.5 : 0.08;
+    const u = m.current.uniforms; cur.current += (prob - cur.current) * 0.07;
+    u.uProb.value = cur.current; u.uSev.value = cur.current * (seg.main ? 1 : 0.45); u.uTime.value = clock.elapsedTime;
+    u.uAmb.value = amb ? 1 : 0; u.uSel.value += ((selected ? 1 : 0) - u.uSel.value) * 0.15; u.uDim.value += ((dim ? 1 : 0) - u.uDim.value) * 0.15;
   });
-  const col = ramp(prob);
   return (
-    <mesh geometry={geo} onClick={(e) => { e.stopPropagation(); onSelect(name); }}>
-      <meshStandardMaterial ref={mat} color={col} emissive={col} roughness={0.45} />
+    <mesh geometry={geo} onClick={(e) => { e.stopPropagation(); onSelect(seg.v); }}
+      onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; onHover(seg.v); }}
+      onPointerOut={() => { document.body.style.cursor = ""; onHover(null); }}>
+      <shaderMaterial ref={m} uniforms={uniforms} vertexShader={VERT} fragmentShader={FRAG} />
     </mesh>
   );
 }
-
-// Placeholder control points (tune visually against your heart mesh scale):
-export const VESSELS = {
-  LAD: [[0.0, 0.5, 0.45], [0.15, 0.2, 0.5], [0.25, -0.2, 0.45], [0.3, -0.55, 0.3]],
-  LCX: [[0.0, 0.5, 0.45], [-0.3, 0.35, 0.3], [-0.45, 0.0, 0.1], [-0.4, -0.35, -0.1]],
-  RCA: [[0.0, 0.55, 0.4], [0.35, 0.45, 0.3], [0.5, 0.0, 0.1], [0.35, -0.45, -0.1]],
-};
