@@ -1,4 +1,3 @@
-
 """Sanity checks that make results believable. Run these BEFORE trusting any number."""
 import numpy as np
 import pandas as pd

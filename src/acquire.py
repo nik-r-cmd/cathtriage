@@ -28,6 +28,12 @@ class Neighbors:
         return np.argpartition(d, K, axis=1)[:, :K]
 
 
+def cad_entropy(P):
+    """Binary entropy of P(CAD) = 1 - P(no stenotic vessel). Targets the headline decision directly."""
+    pc = np.clip(1 - P[..., 0], 1e-6, 1 - 1e-6)
+    return -(pc * np.log(pc) + (1 - pc) * np.log(1 - pc))
+
+
 def _cols(key, gcols):
     return sorted(c for g, o in enumerate(key) if o for c in gcols[g])
 
@@ -41,7 +47,7 @@ def posterior_for(post, X, obs, gcols):
     return out
 
 
-def choose_voi(post, nb, X, obs, gcols, costs, paid, cur_H, K, rng):
+def choose_voi(post, nb, X, obs, gcols, costs, paid, cur_H, K, rng, ent=risk_entropy):
     """Expected entropy reduction per unit cost, patients bucketed by observed set."""
     choice = np.full(len(X), -1)
     keys = [tuple(r) for r in obs]
@@ -59,15 +65,16 @@ def choose_voi(post, nb, X, obs, gcols, costs, paid, cur_H, K, rng):
             Q = np.repeat(X[idx], K, axis=0)
             Q[:, gcols[g]] = nb.Z[near.reshape(-1)][:, gcols[g]] * nb.sd[gcols[g]] + nb.mu[gcols[g]]
             P = post.predict(Q, cols).reshape(len(idx), K, 8)
-            gain = (cur_H[idx] - risk_entropy(P).mean(1)) / costs[g]
+            gain = (cur_H[idx] - ent(P).mean(1)) / costs[g]
             upd = gain > best
             best[upd], arg[upd] = gain[upd], g
         choice[idx] = arg
     return choice
 
 
-def trajectory(post, Xctx, X, gcols, costs, free, policy="voi", K=8, seed=0, order=None):
+def trajectory(post, Xctx, X, gcols, costs, free, policy="voi", K=8, seed=0, order=None, objective="vessels"):
     rng = np.random.default_rng(seed)
+    ent = cad_entropy if objective == "cad" else risk_entropy
     n, G = len(X), len(gcols)
     paid = [g for g in range(G) if g not in free]
     T = len(paid)
@@ -80,7 +87,7 @@ def trajectory(post, Xctx, X, gcols, costs, free, policy="voi", K=8, seed=0, ord
     fixed = sorted(paid, key=lambda g: costs[g]) if policy == "cheapest" else order
     for t in range(T):
         if policy == "voi":
-            ch = choose_voi(post, nb, X, obs, gcols, costs, paid, risk_entropy(P[:, t]), K, rng)
+            ch = choose_voi(post, nb, X, obs, gcols, costs, paid, ent(P[:, t]), K, rng, ent)
         elif policy == "random":
             ch = rand_orders[:, t]
         else:
@@ -92,13 +99,17 @@ def trajectory(post, Xctx, X, gcols, costs, free, policy="voi", K=8, seed=0, ord
     return {"P": P, "C": C, "seq": seq}
 
 
-def stop_index(P, tau):
-    """First step where every vessel marginal is tau-confident; else last step.
+def stop_index(P, tau, rule="all"):
+    """First step where the posterior is tau-confident; else the last step.
+    rule='all': every vessel marginal confident.  rule='cad': only P(CAD) confident (the cath/no-cath decision).
     Uses tau only (never the conformal quantile) so calibration stays circularity-free."""
-    m = marginals(P)                                    # (n, T+1, 3)
-    conf = (np.maximum(m, 1 - m) >= tau).all(-1)       # (n, T+1)
-    first = np.where(conf.any(1), conf.argmax(1), P.shape[1] - 1)
-    return first
+    if rule == "cad":
+        pc = 1 - P[..., 0]
+        conf = np.maximum(pc, 1 - pc) >= tau
+    else:
+        m = marginals(P)                                    # (n, T+1, 3)
+        conf = (np.maximum(m, 1 - m) >= tau).all(-1)       # (n, T+1)
+    return np.where(conf.any(1), conf.argmax(1), P.shape[1] - 1)
 
 
 def static_greedy_order(Xctx, yctx, gcols, costs, free, seed=0):

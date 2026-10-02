@@ -1,0 +1,21 @@
+:root { color-scheme: dark; --bg:#0d1117; --card:#161b22; --line:#30363d; --txt:#e6edf3; --mut:#8b949e; }
+* { box-sizing: border-box; } html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--txt); font: 14px/1.4 system-ui, sans-serif; }
+.app { display: flex; flex-direction: column; height: 100%; }
+.disclaimer { background: #5c1d1d; color: #ffd7d7; padding: 8px 14px; font-weight: 600; border-bottom: 2px solid #e74c3c; }
+main { flex: 1; display: flex; min-height: 0; } .canvas { flex: 1; min-width: 0; }
+.panel { width: 430px; overflow-y: auto; padding: 14px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 12px; }
+h1 { margin: 0; font-size: 20px; } .row { display: flex; align-items: center; gap: 8px; } .between { justify-content: space-between; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.big { font-size: 34px; font-weight: 700; } .bar { flex: 1; height: 8px; background: #21262d; border-radius: 4px; overflow: hidden; } .bar div { height: 100%; }
+.vrow { display: grid; grid-template-columns: 40px 1fr 42px auto; gap: 8px; align-items: center; padding: 6px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+.vrow.sel, .vrow:hover { border-color: var(--line); background: #1c2230; } .vname { font-weight: 700; } .vp { text-align: right; }
+.tag { border: 1px solid; border-radius: 99px; padding: 1px 8px; font-size: 11px; white-space: nowrap; }
+.badge { font-size: 11px; padding: 2px 8px; border-radius: 99px; } .badge.warn { background: #5a4a00; color: #ffd866; } .badge.ok { background: #124d2a; color: #7ee2a8; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; } .chip { background: #21262d; border-radius: 6px; padding: 2px 8px; font-size: 12px; }
+select, input[type=range] { width: 100%; } label { display: flex; flex-direction: column; gap: 4px; color: var(--mut); }
+select { background: var(--card); color: var(--txt); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+small, .muted { color: var(--mut); } .shap { display: flex; flex-direction: column; gap: 4px; }
+.shaprow { display: grid; grid-template-columns: 150px 1fr 44px; gap: 8px; align-items: center; } .fname em { color: var(--mut); font-style: normal; margin-left: 4px; }
+.diverge { position: relative; height: 10px; background: #21262d; border-radius: 3px; } .diverge div { position: absolute; top: 0; height: 100%; } .cval { text-align: right; color: var(--mut); }
+@media (max-width: 900px) { main { flex-direction: column; } .canvas { height: 55vh; flex: none; } .panel { width: auto; border-left: 0; } }

@@ -1,4 +1,3 @@
-
 """Any-subset posterior over the 8 joint vessel states (LAD, LCX, RCA).
 
 Conditioning on an observed subset = refitting the in-context learner on only those
